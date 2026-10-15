@@ -1,0 +1,33 @@
+{
+  "notice_text": {
+    "description": "会话结束后固定回复的文案",
+    "type": "string",
+    "default": "AI可能无法帮助你，请开启新对话"
+  },
+  "blocked_notice_text": {
+    "description": "被拉黑用户收到的回复文案",
+    "type": "string",
+    "default": "你已被拉黑，无法继续对话"
+  },
+  "notify_on_end": {
+    "description": "AI 结束会话时，是否立即回复固定文案",
+    "type": "bool",
+    "default": true
+  },
+  "notify_on_block": {
+    "description": "AI 拉黑用户时，是否立即回复提示文案",
+    "type": "bool",
+    "default": true
+  },
+  "block_scope": {
+    "description": "拉黑范围：global 表示该用户在所有会话都被拉黑；session 表示只在当前会话拉黑",
+    "type": "string",
+    "default": "global",
+    "options": ["global", "session"]
+  },
+  "inject_sender_info": {
+    "description": "是否把当前发送者的昵称/用户ID/群号注入给 AI，便于它分清是谁在骚扰",
+    "type": "bool",
+    "default": true
+  }
+}

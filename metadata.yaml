@@ -1,0 +1,18 @@
+name: astrbot_plugin_reject_harassment
+display_name: 拒绝AI骚扰
+desc: 拒绝 AI 骚扰。AI 可以主动拉黑持续骚扰的单个用户，也可以在多人骚扰时结束整个会话。被拉黑用户的消息不进 AI；被结束会话的消息只回复固定文案，需 /new 才能恢复。指令始终可用，便于管理员解封。
+short_desc: AI 被骚扰时可拉黑用户或结束会话
+author: Celraw
+version: 1.1.0
+support_platforms:
+  - aiocqhttp
+  - telegram
+  - discord
+  - slack
+  - kook
+  - lark
+  - dingtalk
+  - weixin_official_account
+  - satori
+  - misskey
+  - line
