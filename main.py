@@ -24,11 +24,13 @@
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
 from astrbot.api import AstrBotConfig, logger, sp
 from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.message_components import At
 from astrbot.api.star import Context, Star
 
 # 会话结束状态：umo 作用域，每个聊天独立
@@ -259,7 +261,9 @@ class RejectHarassmentPlugin(Star):
             user_id(string): 要拉黑的用户ID。留空表示拉黑当前正在发言的用户。
             reason(string): 拉黑原因，一句话简要说明。
         """
-        target_id = str(user_id or "").strip() or event.get_sender_id()
+        target_id = self._resolve_user_id(event, user_id, allow_at=False) or str(
+            event.get_sender_id() or ""
+        ).strip()
         if not target_id:
             return "无法获取用户ID，拉黑失败。"
         if target_id == str(event.get_self_id()):
@@ -377,10 +381,12 @@ class RejectHarassmentPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("unblock")
     async def unblock_command(self, event: AstrMessageEvent, user_id: str = ""):
-        """解封指定用户：/unblock <用户ID>（仅 AstrBot 管理员）"""
-        target = str(user_id or "").strip()
+        """解封指定用户：/unblock <用户ID 或 @某人>（仅 AstrBot 管理员）"""
+        target = self._resolve_user_id(event, user_id)
         if not target:
-            yield event.plain_result("用法：/unblock <用户ID>")
+            yield event.plain_result(
+                "没识别到用户ID。用法：/unblock <用户ID>，或在群里 @ 那个人。"
+            )
             return
         removed = await self._remove_blocked_by_id(target)
         if removed:
@@ -414,10 +420,12 @@ class RejectHarassmentPlugin(Star):
         user_id: str = "",
         reason: str = "",
     ):
-        """手动拉黑用户：/block <用户ID> [原因]（仅 AstrBot 管理员）"""
-        target = str(user_id or "").strip()
+        """手动拉黑用户：/block <用户ID 或 @某人> [原因]（仅 AstrBot 管理员）"""
+        target = self._resolve_user_id(event, user_id)
         if not target:
-            yield event.plain_result("用法：/block <用户ID> [原因]")
+            yield event.plain_result(
+                "没识别到用户ID。用法：/block <用户ID> [原因]，或在群里 @ 那个人。"
+            )
             return
         if target == str(event.get_self_id()):
             yield event.plain_result("不能拉黑机器人自己。")
@@ -430,6 +438,53 @@ class RejectHarassmentPlugin(Star):
     # ==================================================================
     # 辅助
     # ==================================================================
+    @staticmethod
+    def _extract_at_ids(event: AstrMessageEvent) -> list[str]:
+        """从消息链里取出所有被 @ 的用户ID（跳过 @全体成员）。"""
+        ids: list[str] = []
+        for comp in event.get_messages() or []:
+            if not isinstance(comp, At):
+                continue
+            qq = str(getattr(comp, "qq", "") or "").strip()
+            if qq and qq.lower() != "all":
+                ids.append(qq)
+        return ids
+
+    def _resolve_user_id(
+        self,
+        event: AstrMessageEvent,
+        raw: str = "",
+        *,
+        allow_at: bool = True,
+    ) -> str:
+        """把指令参数统一解析成纯用户ID。
+
+        兼容三种写法：
+        - 纯数字：``1096879696``
+        - @ 某人：从消息链的 At 段取 ``qq``
+        - 被平台渲染过的文本：``@昵称(1096879696)``，用正则兜底抽数字
+
+        Args:
+            event: 当前消息事件。
+            raw: 指令参数原文。
+            allow_at: 是否允许回退到消息里的 @ 目标。工具调用必须传 False，
+                因为群里发消息通常 @ 的是机器人自己，会误解析成 bot 的 ID。
+        """
+        text = str(raw or "").strip().lstrip("@").strip()
+        if text.isdigit():
+            return text
+
+        if allow_at:
+            at_ids = self._extract_at_ids(event)
+            if at_ids:
+                return at_ids[0]
+
+        match = re.search(r"\d{5,}", str(raw or ""))
+        if match:
+            return match.group()
+
+        return ""
+
     @staticmethod
     def _is_command_event(event: AstrMessageEvent) -> bool:
         """本条消息是否触发了指令（含指令组）。"""

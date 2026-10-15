@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.5-ff69b4.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-1.1.0-green.svg)](metadata.yaml)
+[![Version](https://img.shields.io/badge/version-1.1.1-green.svg)](metadata.yaml)
 
 *AstrBot 插件 · 单人骚扰就拉黑,多人骚扰就结束会话*
 
@@ -130,9 +130,11 @@ git clone https://github.com/Celraw/astrbot_plugin_reject_harassment.git
 
 | 指令 | 权限 | 说明 |
 | :-- | :-- | :-- |
-| `/unblock <用户ID>` | AstrBot 管理员 | 解封指定用户 |
+| `/unblock <用户ID 或 @某人>` | AstrBot 管理员 | 解封指定用户 |
 | `/blocklist` | AstrBot 管理员 | 查看当前拉黑名单 |
-| `/block <用户ID> [原因]` | AstrBot 管理员 | 手动拉黑用户 |
+| `/block <用户ID 或 @某人> [原因]` | AstrBot 管理员 | 手动拉黑用户 |
+
+> 解封时既可以直接写数字 ID，也可以在群里 **@ 那个人**，两种都支持。
 
 ---
 
@@ -196,7 +198,7 @@ ProcessStage
 python test_end_session.py
 ```
 
-离线测试,不需要启动 AstrBot,覆盖 **18 个用例**:
+离线测试,不需要启动 AstrBot,覆盖 **22 个用例**:
 
 ```
 PASS  T1  未结束放行
@@ -217,8 +219,12 @@ PASS  T12b 拉黑后指令放行
 PASS  T13 解封后恢复
 PASS  T16 管理员同样被拉黑
 PASS  T14 session 范围隔离
+PASS  T17 @某人 解封
+PASS  T18 渲染文本解封
+PASS  T19 工具不误取At
+PASS  T20 纯数字解封
 
-结果: 18/18 通过
+结果: 22/22 通过
 ```
 
 ---
@@ -262,6 +268,23 @@ PASS  T14 session 范围隔离
 
 单人骚扰用前者,多人骚扰用后者。
 </details>
+
+---
+
+## 更新日志
+
+### v1.1.1
+
+- 🐛 **修复:`/unblock @某人` 解封失败**。
+  之前只认纯数字 ID,`@某人` 会被解析成 `@昵称(数字)` 这样的文本,
+  与名单里存的纯数字对不上,导致「不在拉黑名单中」。
+  现在会正确读取消息链中的 At 段,并兼容被平台渲染过的文本。
+- 🐛 工具端 `block_user` 特意**不**回退到消息里的 @ 目标 ——
+  群里发消息时 @ 的通常是机器人自己,否则会把 bot 的 ID 当成骚扰者。
+
+### v1.1.0
+
+- 首次发布:AI 可主动拉黑单个用户(`block_user`)或结束整个会话(`end_session`)。
 
 ---
 

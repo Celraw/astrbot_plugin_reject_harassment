@@ -79,6 +79,7 @@ class FakeEvent:
         platform_id="aiocqhttp",
         self_id="90000",
         role="member",
+        messages=None,
     ):
         self.unified_msg_origin = umo
         self._text = text
@@ -92,6 +93,10 @@ class FakeEvent:
         self._platform_id = platform_id
         self._self_id = self_id
         self.role = role
+        self._messages = messages or []
+
+    def get_messages(self):
+        return self._messages
 
     def get_message_str(self):
         return self._text
@@ -326,6 +331,60 @@ async def main():
         "T14 session 范围隔离",
         ev_same.is_stopped() and not ev_other.is_stopped(),
         f"same={ev_same.is_stopped()}, other={ev_other.is_stopped()}",
+    )
+
+    # ---- 回归：@ 解析（修复前 /unblock @某人 会失败） ----
+    STORE.clear()
+    pu = new_plugin()
+
+    # T17 用 @ 段解封
+    await pu._add_blocked(FakeEvent(UMO, "", sender_id="60006"), "60006", "测试")
+    ev = FakeEvent(
+        UMO,
+        "/unblock @某人",
+        handlers=[FakeCmdHandler()],
+        messages=[mod.At(qq="60006", name="某人")],
+    )
+    out = [r.text async for r in pu.unblock_command(ev, "")]
+    check(
+        "T17 @某人 解封",
+        await pu._load_blocklist() == {},
+        f"out={out}",
+    )
+
+    # T18 用被平台渲染过的 "@昵称(数字)" 解封
+    await pu._add_blocked(FakeEvent(UMO, "", sender_id="70007"), "70007", "测试")
+    ev = FakeEvent(UMO, "/unblock @昵称(70007)", handlers=[FakeCmdHandler()])
+    out = [r.text async for r in pu.unblock_command(ev, "@昵称(70007)")]
+    check(
+        "T18 渲染文本解封",
+        await pu._load_blocklist() == {},
+        f"out={out}",
+    )
+
+    # T19 工具端不能误取消息里的 At（群里通常 @ 的是机器人自己）
+    pt = new_plugin()
+    ev = FakeEvent(
+        UMO,
+        "辱骂",
+        sender_id="80008",
+        messages=[mod.At(qq="90000", name="bot")],
+    )
+    await pt.block_user(ev, user_id="", reason="测试")
+    ids = {str(v.get("user_id")) for v in (await pt._load_blocklist()).values()}
+    check(
+        "T19 工具不误取At",
+        ids == {"80008"},
+        f"blocked_ids={ids}",
+    )
+
+    # T20 纯数字仍然正常
+    ev = FakeEvent(UMO, "/unblock 80008", handlers=[FakeCmdHandler()])
+    out = [r.text async for r in pt.unblock_command(ev, "80008")]
+    check(
+        "T20 纯数字解封",
+        await pt._load_blocklist() == {},
+        f"out={out}",
     )
 
 
