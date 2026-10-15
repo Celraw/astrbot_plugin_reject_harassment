@@ -100,7 +100,13 @@ if self._is_command_event(event):
 
 ## 安装
 
-### 方式一:手动安装
+### 方式一:下载安装包(推荐)
+
+前往 [**Releases**](https://github.com/Celraw/astrbot_plugin_reject_harassment/releases/latest)
+下载 `astrbot_plugin_reject_harassment-x.y.z.zip`,在 WebUI 的「插件」页面
+选择**从文件安装**,然后重载插件。
+
+### 方式二:手动安装
 
 ```bash
 cd <AstrBot>/data/plugins
