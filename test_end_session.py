@@ -17,6 +17,8 @@
   T14 block_scope=session 只影响当前会话
   T15 注入内容包含正确的用户ID与群号
   T16 管理员同样会被拉黑（不做豁免）
+  T17~T20 @ 解析相关回归
+  T21 注入不修改 system_prompt（保护提示词缓存）
 """
 
 import asyncio
@@ -24,15 +26,22 @@ import importlib.util
 import os
 import sys
 import tempfile
+from pathlib import Path
 
-ASTROBOT_APP = r"C:\Users\a1234\AppData\Local\AstrBot\backend\app"
-sys.path.insert(0, ASTROBOT_APP)
+HERE = Path(__file__).resolve().parent
+MAIN = HERE / "main.py"
+
+# AstrBot 的 astrbot 包（backend/app）若未安装进 site-packages，
+# 可通过环境变量指定，避免在脚本里写死开发者的本机路径：
+#   Windows:  set ASTRBOT_APP=D:\path\to\AstrBot\backend\app
+#   Linux:    export ASTRBOT_APP=/path/to/AstrBot/backend/app
+_astrbot_app = os.environ.get("ASTRBOT_APP")
+if _astrbot_app and _astrbot_app not in sys.path:
+    sys.path.insert(0, _astrbot_app)
 
 # AstrBot 的 get_astrbot_root() 在非打包模式下默认取当前工作目录，
 # 导入 astrbot.core 会顺带创建 <cwd>/data。这里重定向到临时目录，避免污染插件目录。
 os.environ.setdefault("ASTRBOT_ROOT", tempfile.mkdtemp(prefix="reject-harass-test-"))
-
-MAIN = r"D:\Users\a1234\Desktop\project\astrbot_end_session\main.py"
 
 spec = importlib.util.spec_from_file_location("main", MAIN)
 mod = importlib.util.module_from_spec(spec)
@@ -155,6 +164,7 @@ class FakeCmdHandler:
 class FakeReq:
     def __init__(self, system_prompt="你是助手。"):
         self.system_prompt = system_prompt
+        self.extra_user_content_parts = []
 
 
 # ---------------- 假 context ----------------
@@ -194,13 +204,28 @@ async def main():
 
     # T1 未结束时放行 + 注入身份
     req = FakeReq()
+    original_system_prompt = req.system_prompt
     ev = FakeEvent(UMO, "你好")
     await plugin.guard_llm_request(ev, req)
     check("T1 未结束放行", not ev.is_stopped() and ev.sent == [], f"sent={ev.sent}")
+    injected = "\n".join(
+        str(getattr(p, "text", "")) for p in req.extra_user_content_parts
+    )
     check(
         "T15 注入发送者ID与群号",
-        "20001" in req.system_prompt and "100" in req.system_prompt,
-        req.system_prompt.replace("\n", " | ")[-80:],
+        "20001" in injected and "100" in injected,
+        injected.replace("\n", " | ")[-70:],
+    )
+    check(
+        "T21 不改 system_prompt（保护提示词缓存）",
+        req.system_prompt == original_system_prompt,
+        f"system_prompt={req.system_prompt!r}",
+    )
+    check(
+        "T21b 以临时内容块注入（不写入历史）",
+        bool(req.extra_user_content_parts)
+        and all(getattr(p, "_no_save", False) for p in req.extra_user_content_parts),
+        f"temp_parts={len(req.extra_user_content_parts)}",
     )
 
     # T2 AI 调用 end_session

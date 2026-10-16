@@ -26,7 +26,7 @@
     "options": ["global", "session"]
   },
   "inject_sender_info": {
-    "description": "是否把当前发送者的昵称/用户ID/群号注入给 AI，便于它分清是谁在骚扰",
+    "description": "是否把当前发送者的昵称/用户ID/群号随本次请求带给 AI。以临时内容块注入，不改动系统提示词，因此不会影响 LLM 提示词缓存",
     "type": "bool",
     "default": true
   }

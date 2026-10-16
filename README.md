@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.5-ff69b4.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-1.1.1-green.svg)](metadata.yaml)
+[![Version](https://img.shields.io/badge/version-1.1.2-green.svg)](metadata.yaml)
 
 *AstrBot 插件 · 单人骚扰就拉黑,多人骚扰就结束会话*
 
@@ -53,7 +53,7 @@
 ### 🎯 注入用户身份,拒绝误拉黑
 
 AI 如果只知道「有人在骂我」,是分不清群里哪一个人的。插件会把当前发言者的身份
-注入系统提示词:
+随本次请求带给 AI:
 
 ```
 【当前消息发送者信息】
@@ -65,6 +65,25 @@ AI 如果只知道「有人在骂我」,是分不清群里哪一个人的。插�
 ```
 
 这样 AI 拉黑的是**具体的人**,而不是"碰巧在说话的人"。
+
+#### ⚡ 为什么不用 system_prompt
+
+**绝对不能**把它写进 `req.system_prompt`。群聊里每条消息的发送者都不同,
+改了 system_prompt 就等于每次都让提示词前缀失效,**直接打掉 LLM 的提示词缓存命中率**。
+
+正确做法是用官方的临时内容块 API:
+
+```python
+from astrbot.core.agent.message import TextPart
+
+req.extra_user_content_parts.append(
+    TextPart(text=block).mark_as_temp()   # 仅本次请求生效，不写入历史
+)
+```
+
+这些内容会拼进**用户消息**的 content blocks,**系统提示词保持完全不变**,
+前缀稳定 → 缓存命中不受影响。`mark_as_temp()` 会置 `_no_save`,
+因此也不会被持久化进对话历史。
 
 ### 🛡️ 指令永远放行 —— 不会被锁死
 
@@ -198,7 +217,17 @@ ProcessStage
 python test_end_session.py
 ```
 
-离线测试,不需要启动 AstrBot,覆盖 **22 个用例**:
+测试脚本不写死任何本机路径:被测文件按脚本所在目录解析,
+AstrBot 的 `astrbot` 包未装进 `site-packages` 时用环境变量指定即可:
+
+```bash
+# Windows
+set ASTRBOT_APP=D:\path\to\AstrBot\backend\app
+# Linux / macOS
+export ASTRBOT_APP=/path/to/AstrBot/backend/app
+```
+
+离线测试,不需要启动 AstrBot,覆盖 **24 个用例**:
 
 ```
 PASS  T1  未结束放行
@@ -223,8 +252,10 @@ PASS  T17 @某人 解封
 PASS  T18 渲染文本解封
 PASS  T19 工具不误取At
 PASS  T20 纯数字解封
+PASS  T21 不改 system_prompt（保护提示词缓存）
+PASS  T21b 以临时内容块注入（不写入历史）
 
-结果: 22/22 通过
+结果: 24/24 通过
 ```
 
 ---
@@ -272,6 +303,16 @@ PASS  T20 纯数字解封
 ---
 
 ## 更新日志
+
+### v1.1.2
+
+- ⚡ **改为用官方临时内容块注入发送者信息,不再改动 `req.system_prompt`**。
+  群聊里每条消息的发送者都不同,原来往 system_prompt 里追加动态内容会让
+  提示词前缀每次都变,**严重打击 LLM 提示词缓存命中率**。
+  现在改用 `req.extra_user_content_parts` + `TextPart(...).mark_as_temp()`:
+  内容拼进用户消息块,系统提示词保持完全不变,且不写入对话历史。
+- 🧹 测试脚本移除本机硬编码路径,改用脚本相对目录 + `ASTRBOT_APP` 环境变量。
+- ✅ 新增 T21/T21b 两个用例,锁住"不改 system_prompt"这一行为。
 
 ### v1.1.1
 

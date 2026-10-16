@@ -33,6 +33,11 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import At
 from astrbot.api.star import Context, Star
 
+try:  # 官方推荐的"仅本次请求生效"内容块
+    from astrbot.core.agent.message import TextPart
+except Exception:  # pragma: no cover - 兼容不含该 API 的旧版本
+    TextPart = None  # type: ignore[assignment]
+
 # 会话结束状态：umo 作用域，每个聊天独立
 SESSION_SCOPE = "umo"
 SESSION_KEY = "astrbot_plugin_reject_harassment_session"
@@ -506,12 +511,20 @@ class RejectHarassmentPlugin(Star):
         return current_cid != old_cid
 
     def _inject_sender_info(self, event: AstrMessageEvent, req: Any) -> None:
-        """把发送者身份写给 AI，避免它分不清是谁在骚扰而误拉黑。"""
-        if req is None or not hasattr(req, "system_prompt"):
+        """把发送者身份随本次请求带给 AI，避免它分不清是谁在骚扰而误拉黑。
+
+        刻意**不写入** ``req.system_prompt``：群聊里每条消息的发送者都不同，
+        改了 system_prompt 就等于每次都让提示词前缀失效，会直接打掉 LLM 的
+        提示词缓存命中率。这里改用 ``req.extra_user_content_parts``，
+        并以 ``.mark_as_temp()`` 标记为仅本次请求生效、不写入历史。
+        """
+        if req is None or TextPart is None:
             return
+        if not hasattr(req, "extra_user_content_parts"):
+            return
+
         group_id = event.get_group_id()
         lines = [
-            "",
             "【当前消息发送者信息】",
             f"- 昵称：{event.get_sender_name() or '未知'}",
             f"- 用户ID：{event.get_sender_id() or '未知'}",
@@ -519,16 +532,15 @@ class RejectHarassmentPlugin(Star):
         ]
         if group_id:
             lines.append(f"- 群号：{group_id}")
-        lines.extend(
-            [
-                "- 若需要拉黑正在骚扰你的用户，请使用上面的「用户ID」调用 "
-                "block_user；只拉黑单个骚扰者时不要结束整个会话。",
-            ]
+        lines.append(
+            "- 若需要拉黑正在骚扰你的用户，请使用上面的「用户ID」调用 block_user；"
+            "只拉黑单个骚扰者时不要结束整个会话。"
         )
-        block = "\n".join(lines)
+
         try:
-            base = req.system_prompt or ""
-            req.system_prompt = f"{base}\n{block}" if base else block.lstrip("\n")
+            req.extra_user_content_parts.append(
+                TextPart(text="\n".join(lines)).mark_as_temp()
+            )
         except Exception as e:
             logger.debug(f"注入发送者信息失败: {e}")
 
